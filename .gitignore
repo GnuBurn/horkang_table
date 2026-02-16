@@ -1,0 +1,6 @@
+venv/
+.anaconda/
+__pycache__/
+*.exe
+dist/
+build/

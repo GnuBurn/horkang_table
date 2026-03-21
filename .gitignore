@@ -16,3 +16,6 @@ data.yaml
 yolo26n.pt
 yolo26m.pt
 yolov8n.pt
+
+human_test.ipynb
+object_test.ipynb

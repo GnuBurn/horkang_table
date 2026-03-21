@@ -4,3 +4,15 @@ __pycache__/
 *.exe
 dist/
 build/
+sample_data/
+*.pyc
+.vscode
+
+train_dataset_v26
+train_dataset_v8
+
+data.yaml
+
+yolo26n.pt
+yolo26m.pt
+yolov8n.pt

@@ -1,129 +1,100 @@
-# ─────────────────────────────────────────
-#  camera_widget.py  –  Single camera tile
-# ─────────────────────────────────────────
-
 import cv2
-from PyQt6.QtWidgets import (QFrame, QLabel, QVBoxLayout,
-                              QHBoxLayout, QPushButton)
+import json
+import numpy as np
+from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QPixmap
-
 from human_detector import HumanDetector
-from visualizer import draw_boxes, cv2_to_pixmap
-
+from anomaly_detector import AnomalyDetector
+from visualizer import draw_detections, draw_table_zones, cv2_to_pixmap
 
 class CameraWidget(QFrame):
     delete_requested = pyqtSignal(object)
-
-    # One shared model instance across all tiles (loads only once)
-    _detector: HumanDetector | None = None
+    _h_detector = None
+    _a_detector = None
+    _templates = {}
 
     @classmethod
-    def get_detector(cls) -> HumanDetector:
-        if cls._detector is None:
-            cls._detector = HumanDetector()
-        return cls._detector
+    def get_resources(cls):
+        if cls._h_detector is None: cls._h_detector = HumanDetector()
+        if cls._a_detector is None: cls._a_detector = AnomalyDetector()
+        if not cls._templates:
+            try:
+                with open('channel_templates.json', 'r') as f:
+                    cls._templates = json.load(f)['channels']
+                    print("Loaded channel templates successfully.")
+            except: print("Failed to load channel templates. Make sure 'channel_template.json' exists and is properly formatted.")
+        return cls._h_detector, cls._a_detector, cls._templates
 
-    # ── Construction ───────────────────────────────────────────────
-    def __init__(self, cam_id: int):
+    def __init__(self, cam_id):
         super().__init__()
         self.cam_id = cam_id
         self.person_count = 0
 
-        self.setStyleSheet(
-            "background-color: #1a1a1a;"
-            "border: 1px solid #333;"
-            "border-radius: 8px;"
-        )
-
+        self.setFixedSize(500, 350)
+        self.setStyleSheet("background-color: #1a1a1a; border: 1px solid #333; border-radius: 8px;")
+        
         self.main_layout = QVBoxLayout(self)
 
-        # 1. Top bar
         top_bar = QHBoxLayout()
         self.id_label = QLabel(f"CH {self.cam_id:02d}")
-        self.id_label.setStyleSheet(
-            "color: #00ffcc; font-weight: bold; border: none;"
-        )
+        self.id_label.setStyleSheet("color: #00ffcc; font-weight: bold; border: none;")
         self.close_btn = QPushButton("✕")
         self.close_btn.setFixedSize(20, 20)
-        self.close_btn.setStyleSheet(
-            "background: #444; color: white; border-radius: 10px; border: none;"
-        )
+        self.close_btn.setStyleSheet("background: #444; color: white; border-radius: 10px; border: none;")
         self.close_btn.clicked.connect(lambda: self.delete_requested.emit(self))
         top_bar.addWidget(self.id_label)
         top_bar.addStretch()
         top_bar.addWidget(self.close_btn)
         self.main_layout.addLayout(top_bar)
 
-        # 2. Content: video | info
         content = QHBoxLayout()
-
         self.video_area = QLabel("NO SIGNAL")
         self.video_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video_area.setStyleSheet(
-            "background: #000; color: #444; border-radius: 4px;"
-        )
+        self.video_area.setStyleSheet("background: #000; color: #444; border-radius: 4px;")
         self.video_area.setScaledContents(True)
 
         info = QVBoxLayout()
-        info.setSpacing(2)
-
-        self.lbl_title = QLabel("PERSONS")
-        self.lbl_title.setStyleSheet("font-size: 10px; color: #888; border: none;")
-
         self.count_label = QLabel("0")
-        self.count_label.setStyleSheet(
-            "font-size: 24px; font-weight: bold; color: white; border: none;"
-        )
-
-        # Image filename label (small, below count)
-        self.filename_label = QLabel("")
-        self.filename_label.setStyleSheet(
-            "font-size: 9px; color: #555; border: none;"
-        )
-        self.filename_label.setWordWrap(True)
-
-        info.addWidget(self.lbl_title)
+        self.count_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; border: none;")
+        info.addWidget(QLabel("PERSONS", styleSheet="font-size: 10px; color: #888; border: none;"))
         info.addWidget(self.count_label)
-        info.addSpacing(8)
-        info.addWidget(self.filename_label)
         info.addStretch()
-
+        
         content.addWidget(self.video_area, stretch=7)
         content.addLayout(info, stretch=3)
         self.main_layout.addLayout(content)
+    
+    def set_full_screen(self, is_full):
+        """Toggle full screen mode for this camera widget."""
+        if is_full:
+            self.close_btn.hide()
+            self.setFixedSize(1200, 700)
+        else:
+            self.close_btn.show()
+            self.setFixedSize(500, 350)
 
-    # ── Public API ─────────────────────────────────────────────────
-    def load_image(self, image_path: str):
-        """
-        Read image from disk, run YOLOv8 detection,
-        draw bounding boxes, and update the tile — all automatically.
-        """
+    def load_image(self, image_path, channel_key=None):
+        print(f"Loading image: {image_path} for channel: {channel_key}")
         image = cv2.imread(image_path)
-        if image is None:
-            self.show_no_signal("File not found")
-            return
+        if image is None: return
+    
+        h, w = image.shape[:2]
+        h_det, a_det, templates = self.get_resources()
+        print(templates)
+        key = channel_key.lower().replace(" ", "_") if channel_key else None
+        print(f"Using template key: {key}")
+        
+        h_results, h_positions, h_count = h_det.detect(image_path)
+        a_results, a_positions, a_count = a_det.detect(image_path)
 
-        detector = CameraWidget.get_detector()
-        results, count = detector.detect(image_path)
+        occupied_ids = []
+        tables = templates.get(key, {}).get('tables', [])
+        annotated = image.copy()
 
-        annotated = draw_boxes(image, results)
-        pixmap = cv2_to_pixmap(annotated)
+        draw_detections(annotated, h_results, a_results)
+        draw_table_zones(annotated, tables, occupied_ids)
 
-        self._update_display(pixmap, count, image_path)
-
-    def show_no_signal(self, message: str = "NO SIGNAL"):
-        """Show a text message in the video area (no image available)."""
-        self.video_area.setPixmap(QPixmap())   # clear any previous image
-        self.video_area.setText(message)
-        self.count_label.setText("—")
-        self.filename_label.setText("")
-
-    # ── Private ────────────────────────────────────────────────────
-    def _update_display(self, pixmap: QPixmap, person_count: int, image_path: str):
-        self.person_count = person_count
-        self.video_area.setText("")
-        self.video_area.setPixmap(pixmap)
-        self.count_label.setText(str(person_count))
-        # Show just the filename, not the full path
-        self.filename_label.setText(image_path.split("/")[-1])
+        self.person_count = h_count
+        self.video_area.setPixmap(cv2_to_pixmap(annotated))
+        self.count_label.setText(str(h_count))

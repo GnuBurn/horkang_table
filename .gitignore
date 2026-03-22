@@ -19,5 +19,6 @@ yolov8n.pt
 
 human_test.ipynb
 object_test.ipynb
+table_boundary_test.ipynb
 
 config.py

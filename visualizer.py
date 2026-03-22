@@ -1,64 +1,41 @@
 import cv2
+import numpy as np
 from PyQt6.QtGui import QImage, QPixmap
-import config
- 
- 
-def draw_boxes(image, results):
+
+def draw_detections(image, h_results, a_results):
     """
-    Draw bounding boxes for every 'person' detection.
- 
-    Parameters
-    ----------
-    image   : numpy array (BGR) from cv2.imread
-    results : ultralytics Results object from detector.detect()
- 
-    Returns
-    -------
-    image : numpy array with boxes drawn on it
+    Draws boxes for humans (Green) and anomalies (Orange).
+    NO LABELS are added here.
     """
-    for result in results:
-        for box in result.boxes:
-            label = result.names[int(box.cls)]
-            if label != config.TARGET_CLASS:
-                continue
- 
+    for r in h_results:
+        for box in r.boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0])
-            conf = float(box.conf[0])
- 
-            # Draw rectangle
-            cv2.rectangle(
-                image,
-                (x1, y1), (x2, y2),
-                config.BOX_COLOR,
-                config.BOX_THICKNESS
-            )
- 
-            # Draw label background + text
-            text = f"Person  {conf:.0%}"
-            (tw, th), _ = cv2.getTextSize(
-                text, cv2.FONT_HERSHEY_SIMPLEX,
-                config.FONT_SCALE, 1
-            )
-            cv2.rectangle(image, (x1, y1 - th - 8), (x1 + tw + 6, y1), config.BOX_COLOR, -1)
-            cv2.putText(
-                image, text,
-                (x1 + 3, y1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                config.FONT_SCALE,
-                (0, 0, 0),   # black text on coloured background
-                1,
-                cv2.LINE_AA
-            )
- 
-    return image
- 
- 
-def cv2_to_pixmap(image) -> QPixmap:
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            
+    for r in a_results:
+        for box in r.boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 165, 255), 2)
+
+def draw_table_zones(image, tables, occupied_ids):
     """
-    Convert a BGR numpy array to a QPixmap for display in QLabel.
+    Draws polygons for tables and adds the Table ID label.
     """
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    h, w, ch = rgb.shape
-    qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-    return QPixmap.fromImage(qimg)
- 
+    for table in tables:
+        is_occ = table['table_id'] in occupied_ids
+        color = (0, 0, 255) if is_occ else (0, 255, 0)
+        
+        pts = np.array(table['points'], np.int32)
+        
+        cv2.polylines(image, [pts], isClosed=True, color=color, thickness=3)
+        
+        label_pos = (table['points'][0][0], table['points'][0][1] - 10)
+        cv2.putText(image, table['table_id'], label_pos, 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                    
+
+def cv2_to_pixmap(cv_img):
+    height, width, _ = cv_img.shape
+    bytes_per_line = 3 * width
+    q_img = QImage(cv_img.data, width, height, bytes_per_line, QImage.Format.Format_RGB888).rgbSwapped()
+    return QPixmap.fromImage(q_img)

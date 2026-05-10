@@ -16,9 +16,14 @@ data.yaml
 yolo26n.pt
 yolo26m.pt
 yolov8n.pt
+yolov8n_best.pt
+rtdetr-l.pt
 
 human_test.ipynb
 object_test.ipynb
 table_boundary_test.ipynb
 
 config.py
+
+runs/detect/human_detector_v5/**/*.jpg
+runs/detect/human_detector_v5/**/*.csv

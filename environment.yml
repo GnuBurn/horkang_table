@@ -1,4 +1,4 @@
-name: cctv_env
+name: horkang
 channels:
   - defaults
 dependencies:
@@ -39,7 +39,7 @@ dependencies:
       - mpmath==1.3.0
       - networkx==3.4.2
       - numpy==2.2.6
-      - opencv-python==4.13.0.92
+      - opencv-python>=4.6.0,<=4.11.0.86
       - pillow==12.1.1
       - polars==1.38.1
       - polars-runtime-32==1.38.1
@@ -60,3 +60,4 @@ dependencies:
       - ultralytics==8.4.14
       - ultralytics-thop==2.0.18
       - urllib3==2.6.3
+      - sahi==0.11.36

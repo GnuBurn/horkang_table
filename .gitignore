@@ -18,10 +18,12 @@ yolo26m.pt
 yolov8n.pt
 yolov8n_best.pt
 rtdetr-l.pt
+sam_b.pt
 
 human_test.ipynb
 object_test.ipynb
 table_boundary_test.ipynb
+table_detect.ipynb
 
 config.py
 

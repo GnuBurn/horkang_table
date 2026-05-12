@@ -17,21 +17,31 @@ def draw_detections(image, h_results, a_results):
             x1, y1, x2, y2 = map(int, box.xyxy[0])
             cv2.rectangle(image, (x1, y1), (x2, y2), (0, 165, 255), 2)
 
-def draw_table_zones(image, tables, occupied_ids):
+def draw_table_zones(image, tables, table_statuses):
     """
-    Draws polygons for tables and adds the Table ID label.
+    Draws polygons for tables and adds the Table ID and Status label.
     """
     for table in tables:
-        is_occ = table['table_id'] in occupied_ids
-        color = (0, 0, 255) if is_occ else (0, 255, 0)
+        t_id = table['table_id']
+        status = table_statuses.get(t_id, "free")
         
+        if status == "occupied":
+            color = (0, 0, 255) # Red
+        elif status == "reserved":
+            color = (0, 165, 255) # Orange
+        elif status == "exceeded":
+            color = (128, 0, 128) # Purple
+        else:
+            color = (0, 255, 0) # Green (free)
+            
         pts = np.array(table['points'], np.int32)
         
         cv2.polylines(image, [pts], isClosed=True, color=color, thickness=3)
         
         label_pos = (table['points'][0][0], table['points'][0][1] - 10)
-        cv2.putText(image, table['table_id'], label_pos, 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        text = f"{t_id}: {status}"
+        cv2.putText(image, text, label_pos, 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
                     
 
 def cv2_to_pixmap(cv_img):

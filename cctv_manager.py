@@ -2,7 +2,7 @@ import os
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QLabel, QGridLayout, 
                              QVBoxLayout, QHBoxLayout, QPushButton, 
                              QFileDialog, QInputDialog, QStackedWidget)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from camera_widget import CameraWidget
 
 class CCTVManager(QMainWindow):
@@ -15,9 +15,14 @@ class CCTVManager(QMainWindow):
         self.all_cameras = []
         self.current_page = 0
         self.max_per_page = 4 
+        self.status_labels = {}
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
+
+        self.total_refresh_timer = QTimer(self)
+        self.total_refresh_timer.timeout.connect(self._refresh_total)
+        self.total_refresh_timer.start(5000)
 
         # PAGE 1: Grid View
         self.grid_container = QWidget()
@@ -29,14 +34,28 @@ class CCTVManager(QMainWindow):
 
         # PAGE 2: Big Picture View
         self.big_picture_container = QWidget()
-        self.big_layout = QVBoxLayout(self.big_picture_container)
+        self.big_main_layout = QHBoxLayout(self.big_picture_container)
+        
+        self.big_left_layout = QVBoxLayout()
         self.back_btn = QPushButton("← EXIT FULL SCREEN")
         self.back_btn.setStyleSheet("background: #444; color: white; padding: 10px; font-weight: bold; border: none;")
         self.back_btn.clicked.connect(self.exit_full_screen)
         
         self.full_screen_content = QVBoxLayout()
-        self.big_layout.addWidget(self.back_btn)
-        self.big_layout.addLayout(self.full_screen_content)
+        self.big_left_layout.addWidget(self.back_btn)
+        self.big_left_layout.addLayout(self.full_screen_content)
+        
+        self.big_sidebar = QVBoxLayout()
+        self.big_sidebar.setContentsMargins(10, 20, 10, 20)
+        self.table_status_label = QLabel("TABLE STATUSES")
+        self.table_status_label.setStyleSheet("color: #888; font-weight: bold; font-size: 14px;")
+        self.big_sidebar.addWidget(self.table_status_label)
+        self.status_list_layout = QVBoxLayout()
+        self.big_sidebar.addLayout(self.status_list_layout)
+        self.big_sidebar.addStretch()
+        
+        self.big_main_layout.addLayout(self.big_left_layout, stretch=4)
+        self.big_main_layout.addLayout(self.big_sidebar, stretch=1)
         self.stack.addWidget(self.big_picture_container)
 
     def _setup_sidebar(self):
@@ -77,7 +96,7 @@ class CCTVManager(QMainWindow):
         self.grid_main_layout.addLayout(self.sidebar, stretch=1)
 
     def add_camera_workflow(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select Camera Feed", "", "Images (*.jpg *.png *.jpeg)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Camera Feed", "", "Videos (*.mp4 *.avi *.mkv *.mov)")
         if not file_path: return
 
         templates = ["Channel 3", "Channel 4", "Channel 9", "Channel 12"]
@@ -89,7 +108,7 @@ class CCTVManager(QMainWindow):
         new_cam.mousePressEvent = lambda event: self.show_full_screen(new_cam)
         
         self.all_cameras.append(new_cam)
-        new_cam.load_image(file_path, channel_key=choice)
+        new_cam.load_video(file_path, channel_key=choice)
         
         self.update_view()
         self._refresh_total()
@@ -114,13 +133,41 @@ class CCTVManager(QMainWindow):
         cam_widget.set_full_screen(True)
         self.full_screen_content.addWidget(cam_widget)
         self.stack.setCurrentIndex(1)
+        self._status_connection = cam_widget.status_updated.connect(self.update_status_sidebar)
 
     def exit_full_screen(self):
         if hasattr(self, 'current_active_cam'):
+            if hasattr(self, '_status_connection'):
+                self.current_active_cam.status_updated.disconnect(self._status_connection)
+                del self._status_connection
             self.current_active_cam.set_full_screen(False)
             self.full_screen_content.removeWidget(self.current_active_cam)
             self.stack.setCurrentIndex(0)
             self.update_view()
+            self._clear_status_sidebar()
+
+    def update_status_sidebar(self, statuses):
+        for t_id, status in statuses.items():
+            color = "#00ff00" if status == "free" else "#ff0000" if status == "occupied" else "#ffa500" if status == "reserved" else "#800080"
+            text = f"{t_id}: {status.upper()}"
+            
+            if t_id not in self.status_labels:
+                label = QLabel(text)
+                label.setStyleSheet(f"color: {color}; font-size: 16px; font-weight: bold; margin-bottom: 5px;")
+                self.status_list_layout.addWidget(label)
+                self.status_labels[t_id] = label
+            else:
+                label = self.status_labels[t_id]
+                if label.text() != text:
+                    label.setText(text)
+                    label.setStyleSheet(f"color: {color}; font-size: 16px; font-weight: bold; margin-bottom: 5px;")
+            
+    def _clear_status_sidebar(self):
+        while self.status_list_layout.count():
+            item = self.status_list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        self.status_labels.clear()
 
     def remove_camera(self, cam_widget):
         if cam_widget in self.all_cameras:

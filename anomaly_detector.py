@@ -5,13 +5,12 @@ class AnomalyDetector:
     def __init__(self):
         self.model = YOLO(config.ANOMALY_MODEL_NAME)
 
-    def detect(self, image_path):
+    def detect(self, frame):
         results = self.model(
-            image_path, 
+            frame, 
             conf=config.ANOMALY_THRESHOLD, 
             verbose=False
         )
-        print(f"Anomaly Detection: {len(results[0].boxes)} anomalies detected.")
         positions = []
         for r in results:
             for box in r.boxes:
